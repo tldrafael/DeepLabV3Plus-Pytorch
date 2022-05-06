@@ -364,9 +364,9 @@ def main():
                     opts=opts, model=model, loader=val_loader, device=device, metrics=metrics,
                     ret_samples_ids=vis_sample_id)
 
-                writer.add_scalars('mIoU', val_score['Mean IoU'], cur_itrs)
-                writer.add_scalars('classIoU', val_score['Class IoU'], cur_itrs)
-                writer.add_scalars('Acc', val_score['Overall Acc'], cur_itrs)
+                writer.add_scalars('mIoU', {'val': val_score['Mean IoU']}, cur_itrs)
+                # writer.add_scalars('classIoU', {'val': val_score['Class IoU']}, cur_itrs)
+                writer.add_scalars('Acc', {'val': val_score['Overall Acc']}, cur_itrs)
                 writer.flush()
 
                 print(metrics.to_str(val_score))
