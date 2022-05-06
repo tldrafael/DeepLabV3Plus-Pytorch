@@ -18,6 +18,9 @@ from utils.visualizer import Visualizer
 from PIL import Image
 import matplotlib
 import matplotlib.pyplot as plt
+import sys
+sys.path.append('../semantic-seg-utils')
+import training_helpers as th
 
 
 def get_argparser():
@@ -321,6 +324,9 @@ def main():
         print(metrics.to_str(val_score))
         return
 
+
+    writer = th.get_default_writer(0, True, opts.ckpt_dir)
+
     interval_loss = 0
     while True:  # cur_itrs < opts.total_itrs:
         # =====  Train  =====
@@ -357,6 +363,12 @@ def main():
                 val_score, ret_samples = validate(
                     opts=opts, model=model, loader=val_loader, device=device, metrics=metrics,
                     ret_samples_ids=vis_sample_id)
+
+                writer.add_scalars('mIoU', val_score['Mean IoU'], cur_itrs)
+                writer.add_scalars('classIoU', val_score['Class IoU'], cur_itrs)
+                writer.add_scalars('Acc', val_score['Overall Acc'], cur_itrs)
+                writer.flush()
+
                 print(metrics.to_str(val_score))
                 if val_score['Mean IoU'] > best_score:  # save best model
                     best_score = val_score['Mean IoU']
