@@ -124,7 +124,7 @@ class Cityscapes(data.Dataset):
         if self.transform:
             image, target = self.transform(image, target)
         target = self.encode_target(target)
-        return image, target
+        return image, target[None]
 
     def __len__(self):
         return len(self.images)
