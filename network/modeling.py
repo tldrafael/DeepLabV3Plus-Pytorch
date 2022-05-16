@@ -26,7 +26,10 @@ def _segm_hrnet(name, backbone_name, num_classes, pretrained_backbone):
     model = DeepLabV3(backbone, classifier)
     return model
 
-def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone):
+def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone, **kwargs):
+
+    if not kwargs.get('fl_maxpool') and output_stride > 8:
+        raise ValueError('When avoiding max pooling, the maximum stride possible is 8')
 
     if output_stride==4:
         replace_stride_with_dilation=[True, True, True]
@@ -40,7 +43,7 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
 
     backbone = resnet.__dict__[backbone_name](
         pretrained=pretrained_backbone,
-        replace_stride_with_dilation=replace_stride_with_dilation)
+        replace_stride_with_dilation=replace_stride_with_dilation, **kwargs)
     
     inplanes = 2048
     low_level_planes = 256
@@ -84,12 +87,12 @@ def _segm_mobilenet(name, backbone_name, num_classes, output_stride, pretrained_
     model = DeepLabV3(backbone, classifier)
     return model
 
-def _load_model(arch_type, backbone, num_classes, output_stride, pretrained_backbone):
+def _load_model(arch_type, backbone, num_classes, output_stride, pretrained_backbone, **kwargs):
 
     if backbone=='mobilenetv2':
         model = _segm_mobilenet(arch_type, backbone, num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
     elif backbone.startswith('resnet'):
-        model = _segm_resnet(arch_type, backbone, num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+        model = _segm_resnet(arch_type, backbone, num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone, **kwargs)
     elif backbone.startswith('hrnetv2'):
         model = _segm_hrnet(arch_type, backbone, num_classes, pretrained_backbone=pretrained_backbone)
     else:
@@ -139,10 +142,12 @@ def deeplabv3_mobilenet(num_classes=21, output_stride=8, pretrained_backbone=Tru
 def deeplabv3plus_hrnetv2_48(num_classes=21, output_stride=4, pretrained_backbone=False): # no pretrained backbone yet
     return _load_model('deeplabv3plus', 'hrnetv2_48', num_classes, output_stride, pretrained_backbone=pretrained_backbone)
 
+
 def deeplabv3plus_hrnetv2_32(num_classes=21, output_stride=4, pretrained_backbone=True):
     return _load_model('deeplabv3plus', 'hrnetv2_32', num_classes, output_stride, pretrained_backbone=pretrained_backbone)
 
-def deeplabv3plus_resnet50(num_classes=21, output_stride=8, pretrained_backbone=True):
+
+def deeplabv3plus_resnet50(num_classes=21, output_stride=8, pretrained_backbone=True, **kwargs):
     """Constructs a DeepLabV3 model with a ResNet-50 backbone.
 
     Args:
@@ -150,7 +155,7 @@ def deeplabv3plus_resnet50(num_classes=21, output_stride=8, pretrained_backbone=
         output_stride (int): output stride for deeplab.
         pretrained_backbone (bool): If True, use the pretrained backbone.
     """
-    return _load_model('deeplabv3plus', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+    return _load_model('deeplabv3plus', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone, **kwargs)
 
 
 def deeplabv3plus_resnet101(num_classes=21, output_stride=8, pretrained_backbone=True):
