@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-try: # for torchvision<0.4
+try:  # for torchvision<0.4
     from torchvision.models.utils import load_state_dict_from_url
-except: # for torchvision>=0.4
+except:  # for torchvision>=0.4
     from torch.hub import load_state_dict_from_url
 
 
@@ -22,6 +22,18 @@ model_urls = {
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
+
+
+def conv7x7(in_planes, out_planes, stride=1, groups=1, dilation=1):
+    """7x7 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=7, stride=stride,
+                     padding=3 * dilation, groups=groups, bias=False, dilation=dilation)
+
+
+def conv5x5(in_planes, out_planes, stride=1, groups=1, dilation=1):
+    """5x5 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=5, stride=stride,
+                     padding=2 * dilation, groups=groups, bias=False, dilation=dilation)
 
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -118,10 +130,126 @@ class Bottleneck(nn.Module):
         return out
 
 
+class StemBlock1(nn.Module):
+    def __init__(self, inplanes, planes, stride=1):
+        super().__init__()
+        self.conv1 = conv3x3(inplanes, planes[0])
+        self.bn1 = nn.BatchNorm2d(planes[0])
+
+        self.conv2 = conv5x5(inplanes, planes[1])
+        self.bn2 = nn.BatchNorm2d(planes[1])
+
+        self.conv3 = conv7x7(inplanes, planes[2])
+        self.bn3 = nn.BatchNorm2d(planes[2])
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        out_1 = self.conv1(x)
+        out_1 = self.bn1(out_1)
+
+        out_2 = self.conv2(x)
+        out_2 = self.bn2(out_2)
+
+        out_3 = self.conv3(x)
+        out_3 = self.bn3(out_3)
+
+        out = torch.cat([out_1, out_2, out_3], dim=1)
+        return self.relu(out)
+
+
+class StemBlock2(nn.Module):
+    def __init__(self, inplanes, planes, stride=2, channel_reduction=16, dilation=1):
+        super().__init__()
+        self.conv1 = conv1x1(inplanes, planes[0], stride=stride)
+        self.bn1 = nn.BatchNorm2d(planes[0])
+
+        self.conv2_1 = conv1x1(inplanes, channel_reduction)
+        self.conv2_2 = conv3x3(channel_reduction, planes[1], stride=stride)
+        self.bn2 = nn.BatchNorm2d(planes[1])
+
+        self.conv3_1 = conv1x1(inplanes, channel_reduction)
+        self.conv3_2 = conv5x5(channel_reduction, planes[2], stride=stride)
+        self.bn3 = nn.BatchNorm2d(planes[2])
+
+        self.conv4_1 = conv1x1(inplanes, channel_reduction)
+        self.conv4_2 = conv7x7(channel_reduction, planes[3], stride=stride)
+        self.bn4 = nn.BatchNorm2d(planes[3])
+
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=stride, padding=1)
+        self.conv5 = conv1x1(inplanes, planes[4])
+        self.bn5 = nn.BatchNorm2d(planes[4])
+
+        self.relu = nn.ReLU(inplace=True)
+        self.stride = stride
+        self.downsample = nn.Sequential(
+                            conv1x1(inplanes, sum(planes), stride=stride),
+                            nn.BatchNorm2d(sum(planes))
+                            )
+
+        self.conv6 = conv1x1(sum(planes), 64, stride=1)
+        self.bn6 = nn.BatchNorm2d(64)
+
+    def forward(self, x):
+        identity = x
+
+        out_1 = self.conv1(x)
+        out_1 = self.bn1(out_1)
+
+        out_2 = self.conv2_1(x)
+        out_2 = self.conv2_2(out_2)
+        out_2 = self.bn2(out_2)
+
+        out_3 = self.conv3_1(x)
+        out_3 = self.conv3_2(out_3)
+        out_3 = self.bn3(out_3)
+
+        out_4 = self.conv4_1(x)
+        out_4 = self.conv4_2(out_4)
+        out_4 = self.bn4(out_4)
+
+        out_5 = self.maxpool(x)
+        out_5 = self.conv5(out_5)
+        out_5 = self.bn5(out_5)
+
+        out = torch.cat([out_1, out_2, out_3, out_4, out_5], dim=1)
+        out += self.downsample(identity)
+        out = self.relu(out)
+
+        out = self.conv6(out)
+        out = self.bn6(out)
+        return self.relu(out)
+
+
+class RichStem(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.block1 = StemBlock1(3, [24, 24, 24])
+        self.block2 = StemBlock2(72, [32, 64, 64, 64, 32], channel_reduction=16)
+
+    def forward(self, x):
+        out = self.block1(x)
+        return self.block2(out)
+
+
+class ClassicStem(nn.Module):
+    def __init__(self, inplanes, **kwargs):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, inplanes, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(inplanes)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        return self.relu(x)
+
+
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, fl_maxpool=True):
+                 norm_layer=None, fl_maxpool=True, fl_richstem=False):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -130,6 +258,7 @@ class ResNet(nn.Module):
         self.inplanes = 64
         self.dilation = 1
         self.fl_maxpool = fl_maxpool
+        self.fl_richstem = fl_richstem
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
             # the 2x2 stride with a dilated convolution instead
@@ -139,10 +268,7 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.stem = RichStem() if fl_richstem else ClassicStem(self.inplanes)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
@@ -196,9 +322,7 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
+        x = self.stem(x)
         if self.fl_maxpool:
             x = self.maxpool(x)
 
@@ -220,7 +344,16 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
-        model.load_state_dict(state_dict)
+
+        # Change names to use the classic stem 7x7s2
+        # Otherwise train stem from scratch with strict=False
+        if not kwargs.get('fl_richstem'):
+            for k in list(state_dict.keys()):
+                if k in ['conv1.weight', 'bn1.weight', 'bn1.bias',
+                         'bn1.running_mean', 'bn1.running_var']:
+                    state_dict['stem.{}'.format(k)] = state_dict.pop(k)
+
+        model.load_state_dict(state_dict, strict=False)
     return model
 
 

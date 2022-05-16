@@ -28,7 +28,7 @@ def _segm_hrnet(name, backbone_name, num_classes, pretrained_backbone):
 
 def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone, **kwargs):
 
-    if not kwargs.get('fl_maxpool') and output_stride > 8:
+    if not kwargs.get('fl_maxpool') and output_stride > 16:
         raise ValueError('When avoiding max pooling, the maximum stride possible is 8')
 
     if output_stride==4:
@@ -37,9 +37,20 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
     elif output_stride==8:
         replace_stride_with_dilation=[False, True, True]
         aspp_dilate = [12, 24, 36]
-    else:
+    elif output_stride==16:
         replace_stride_with_dilation=[False, False, True]
         aspp_dilate = [6, 12, 18]
+    else:
+        replace_stride_with_dilation=[False, False, False]
+        aspp_dilate = [3, 6, 9]
+
+    # In case of MaxPooling layer was avoided,
+    # we should do one more striding on the blocks than usual
+    if not kwargs.get('fl_maxpool'):
+        for i, e in enumerate(replace_stride_with_dilation):
+            if e is True:
+                replace_stride_with_dilation[i] = False
+                break
 
     backbone = resnet.__dict__[backbone_name](
         pretrained=pretrained_backbone,
@@ -115,7 +126,7 @@ def deeplabv3_resnet50(num_classes=21, output_stride=8, pretrained_backbone=True
         output_stride (int): output stride for deeplab.
         pretrained_backbone (bool): If True, use the pretrained backbone.
     """
-    return _load_model('deeplabv3', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone)
+    return _load_model('deeplabv3', 'resnet50', num_classes, output_stride=output_stride, pretrained_backbone=False)
 
 def deeplabv3_resnet101(num_classes=21, output_stride=8, pretrained_backbone=True):
     """Constructs a DeepLabV3 model with a ResNet-101 backbone.
