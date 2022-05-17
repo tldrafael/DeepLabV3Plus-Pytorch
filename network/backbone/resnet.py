@@ -233,7 +233,7 @@ class RichStem(nn.Module):
 
 
 class ClassicStem(nn.Module):
-    def __init__(self, inplanes, **kwargs):
+    def __init__(self, inplanes=64, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(3, inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -246,10 +246,24 @@ class ClassicStem(nn.Module):
         return self.relu(x)
 
 
+class ParallelStem(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.classic = ClassicStem()
+        self.rich = RichStem()
+
+    def forward(self, x):
+        return self.classic(x) + self.rich(x)
+
+
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, fl_maxpool=True, fl_richstem=False):
+                 norm_layer=None, fl_maxpool=True, fl_richstem=False, fl_parallelstem=False):
+
+        assert not fl_richstem or not fl_parallelstem, \
+               "Or set fl_richstem or fl_richstem_parallel, but not both"
+
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -259,6 +273,7 @@ class ResNet(nn.Module):
         self.dilation = 1
         self.fl_maxpool = fl_maxpool
         self.fl_richstem = fl_richstem
+        self.fl_parallelstem = fl_parallelstem
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
             # the 2x2 stride with a dilated convolution instead
@@ -268,7 +283,12 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.stem = RichStem() if fl_richstem else ClassicStem(self.inplanes)
+
+        if fl_parallelstem:
+            self.stem = ParallelStem()
+        else:
+            self.stem = RichStem() if fl_richstem else ClassicStem()
+
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
