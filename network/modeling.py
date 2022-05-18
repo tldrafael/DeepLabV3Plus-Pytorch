@@ -55,9 +55,13 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
     backbone = resnet.__dict__[backbone_name](
         pretrained=pretrained_backbone,
         replace_stride_with_dilation=replace_stride_with_dilation, **kwargs)
-    
-    inplanes = 2048
-    low_level_planes = 256
+
+    if backbone_name == 'resnet34':
+        inplanes = 512
+        low_level_planes = 64
+    else:
+        inplanes = 2048
+        low_level_planes = 256
 
     if name=='deeplabv3plus':
         return_layers = {'layer4': 'out', 'layer1': 'low_level'}
@@ -77,7 +81,7 @@ def _segm_mobilenet(name, backbone_name, num_classes, output_stride, pretrained_
         aspp_dilate = [6, 12, 18]
 
     backbone = mobilenetv2.mobilenet_v2(pretrained=pretrained_backbone, output_stride=output_stride)
-    
+
     # rename layers
     backbone.low_level_features = backbone.features[0:4]
     backbone.high_level_features = backbone.features[4:-1]
@@ -86,7 +90,7 @@ def _segm_mobilenet(name, backbone_name, num_classes, output_stride, pretrained_
 
     inplanes = 320
     low_level_planes = 24
-    
+
     if name=='deeplabv3plus':
         return_layers = {'high_level_features': 'out', 'low_level_features': 'low_level'}
         classifier = DeepLabHeadV3Plus(inplanes, low_level_planes, num_classes, aspp_dilate)
@@ -156,6 +160,10 @@ def deeplabv3plus_hrnetv2_48(num_classes=21, output_stride=4, pretrained_backbon
 
 def deeplabv3plus_hrnetv2_32(num_classes=21, output_stride=4, pretrained_backbone=True):
     return _load_model('deeplabv3plus', 'hrnetv2_32', num_classes, output_stride, pretrained_backbone=pretrained_backbone)
+
+
+def deeplabv3plus_resnet34(num_classes=21, output_stride=8, pretrained_backbone=True, **kwargs):
+    return _load_model('deeplabv3plus', 'resnet34', num_classes, output_stride=output_stride, pretrained_backbone=pretrained_backbone, **kwargs)
 
 
 def deeplabv3plus_resnet50(num_classes=21, output_stride=8, pretrained_backbone=True, **kwargs):
