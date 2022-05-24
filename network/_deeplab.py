@@ -8,6 +8,10 @@ from .utils import _SimpleSegmentationModel
 __all__ = ["DeepLabV3"]
 
 
+def convT_doubleinputsize(in_planes, out_planes):
+    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1)
+
+
 class DeepLabV3(_SimpleSegmentationModel):
     """
     Implements DeepLabV3 model from
@@ -25,10 +29,12 @@ class DeepLabV3(_SimpleSegmentationModel):
     """
     pass
 
+
 class DeepLabHeadV3Plus(nn.Module):
-    def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36]):
+    def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36],
+                 fl_transpose=False, output_stride_lowlevel=4, **kwargs):
         super(DeepLabHeadV3Plus, self).__init__()
-        self.project = nn.Sequential( 
+        self.project = nn.Sequential(
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
             nn.ReLU(inplace=True),
@@ -36,12 +42,34 @@ class DeepLabHeadV3Plus(nn.Module):
 
         self.aspp = ASPP(in_channels, aspp_dilate)
 
-        self.classifier = nn.Sequential(
+        self.classifier = [
             nn.Conv2d(304, 256, 3, padding=1, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, num_classes, 1)
-        )
+        ]
+
+        if fl_transpose:
+            if output_stride_lowlevel == 4:
+                convT_block = [convT_doubleinputsize(256, 128),
+                               nn.BatchNorm2d(128),
+                               nn.ReLU(inplace=True),
+                               convT_doubleinputsize(128, 64)
+                               ]
+
+            if output_stride_lowlevel == 2:
+                convT_block = [convT_doubleinputsize(256, 64)]
+
+            convT_block.extend([nn.BatchNorm2d(64),
+                                nn.ReLU(inplace=True),
+                                nn.Conv2d(64, num_classes, 1)
+                                ])
+
+            self.classifier.extend(convT_block)
+        else:
+            self.classifier.append(nn.Conv2d(256, num_classes, 1))
+
+        self.classifier = nn.Sequential(*self.classifier)
+
         self._init_weight()
 
     def forward(self, feature):

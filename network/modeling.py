@@ -46,7 +46,9 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
 
     # In case of MaxPooling layer was avoided,
     # we should do one more striding on the blocks than usual
+    kwargs['output_stride_lowlevel'] = 4
     if not kwargs.get('fl_maxpool'):
+        kwargs['output_stride_lowlevel'] = 2
         for i, e in enumerate(replace_stride_with_dilation):
             if e is True:
                 replace_stride_with_dilation[i] = False
@@ -65,12 +67,12 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
 
     if name=='deeplabv3plus':
         return_layers = {'layer4': 'out', 'layer1': 'low_level'}
-        classifier = DeepLabHeadV3Plus(inplanes, low_level_planes, num_classes, aspp_dilate)
+        classifier = DeepLabHeadV3Plus(inplanes, low_level_planes, num_classes, aspp_dilate, **kwargs)
     elif name=='deeplabv3':
         return_layers = {'layer4': 'out'}
         classifier = DeepLabHead(inplanes , num_classes, aspp_dilate)
-    backbone = IntermediateLayerGetter(backbone, return_layers=return_layers)
 
+    backbone = IntermediateLayerGetter(backbone, return_layers=return_layers)
     model = DeepLabV3(backbone, classifier)
     return model
 
