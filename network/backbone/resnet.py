@@ -289,7 +289,9 @@ class ResNet(nn.Module):
         else:
             self.stem = RichStem() if fl_richstem else ClassicStem()
 
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        if self.fl_maxpool:
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
                                        dilate=replace_stride_with_dilation[0])
