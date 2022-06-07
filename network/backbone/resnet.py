@@ -133,13 +133,13 @@ class Bottleneck(nn.Module):
 class StemBlock1(nn.Module):
     def __init__(self, inplanes, planes, stride=1):
         super().__init__()
-        self.conv1 = conv3x3(inplanes, planes[0])
+        self.conv1 = conv3x3(inplanes, planes[0], stride=stride)
         self.bn1 = nn.BatchNorm2d(planes[0])
 
-        self.conv2 = conv5x5(inplanes, planes[1])
+        self.conv2 = conv5x5(inplanes, planes[1], stride=stride)
         self.bn2 = nn.BatchNorm2d(planes[1])
 
-        self.conv3 = conv7x7(inplanes, planes[2])
+        self.conv3 = conv7x7(inplanes, planes[2], stride=stride)
         self.bn3 = nn.BatchNorm2d(planes[2])
 
         self.relu = nn.ReLU(inplace=True)
@@ -233,9 +233,10 @@ class RichStem(nn.Module):
 
 
 class ClassicStem(nn.Module):
-    def __init__(self, inplanes=64, **kwargs):
+    def __init__(self, inplanes=64, fl_stemstride=True, **kwargs):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, inplanes, kernel_size=7, stride=2, padding=3,
+        stem_stride = 2 if fl_stemstride else 1
+        self.conv1 = nn.Conv2d(3, inplanes, kernel_size=7, stride=stem_stride, padding=3,
                                bias=False)
         self.bn1 = nn.BatchNorm2d(inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -259,7 +260,8 @@ class ParallelStem(nn.Module):
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, fl_maxpool=True, fl_richstem=False, fl_parallelstem=False, **kwargs):
+                 norm_layer=None, fl_maxpool=True, fl_richstem=False, fl_parallelstem=False,
+                 fl_stemstride=2, **kwargs):
 
         assert not fl_richstem or not fl_parallelstem, \
                "Or set fl_richstem or fl_richstem_parallel, but not both"
@@ -287,7 +289,7 @@ class ResNet(nn.Module):
         if fl_parallelstem:
             self.stem = ParallelStem()
         else:
-            self.stem = RichStem() if fl_richstem else ClassicStem()
+            self.stem = RichStem() if fl_richstem else ClassicStem(fl_stemstride=fl_stemstride)
 
         if self.fl_maxpool:
             self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -369,11 +371,16 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
 
         # Change names to use the classic stem 7x7s2
         # Otherwise train stem from scratch with strict=False
-        if not kwargs.get('fl_richstem'):
+        if not kwargs.get('fl_richstem') and not kwargs.get('fl_parallelstem'):
             for k in list(state_dict.keys()):
                 if k in ['conv1.weight', 'bn1.weight', 'bn1.bias',
                          'bn1.running_mean', 'bn1.running_var']:
                     state_dict['stem.{}'.format(k)] = state_dict.pop(k)
+        elif kwargs.get('fl_parallelstem'):
+            for k in list(state_dict.keys()):
+                if k in ['conv1.weight', 'bn1.weight', 'bn1.bias',
+                         'bn1.running_mean', 'bn1.running_var']:
+                    state_dict['stem.classic.{}'.format(k)] = state_dict.pop(k)
 
         model.load_state_dict(state_dict, strict=False)
     return model

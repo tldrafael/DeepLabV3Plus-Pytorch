@@ -28,31 +28,31 @@ def _segm_hrnet(name, backbone_name, num_classes, pretrained_backbone):
 
 def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_backbone, **kwargs):
 
-    if not kwargs.get('fl_maxpool') and output_stride > 16:
-        raise ValueError('When avoiding max pooling, the maximum stride possible is 8')
+    fl_maxpool = kwargs.get('fl_maxpool')
+    fl_stemstride = kwargs.get('fl_stemstride')
+    output_stride_lowlevel = 4 / (2 * ((not fl_maxpool) + (not fl_stemstride)))
+    assert output_stride >= output_stride_lowlevel, 'Final output stride should be at least equal to the OS_lowlevel'
+    output_stride_diff = output_stride / output_stride_lowlevel
 
-    if output_stride==4:
-        replace_stride_with_dilation=[True, True, True]
-        aspp_dilate = [24, 48, 72]
-    elif output_stride==8:
-        replace_stride_with_dilation=[False, True, True]
-        aspp_dilate = [12, 24, 36]
-    elif output_stride==16:
-        replace_stride_with_dilation=[False, False, True]
-        aspp_dilate = [6, 12, 18]
-    else:
+    if not fl_stemstride and not fl_maxpool and output_stride > 8:
+        raise ValueError('When avoiding StemStride and MaxPooling, the maximum possible stride is 8')
+    elif ((fl_stemstride and not fl_maxpool) or (not fl_stemstride and fl_maxpool)) and output_stride > 16:
+        raise ValueError('When avoiding MaxPooling, the maximum possible stride is 16')
+
+    if output_stride_diff == 1:
         replace_stride_with_dilation=[False, False, False]
         aspp_dilate = [3, 6, 9]
+    elif output_stride_diff == 2:
+        replace_stride_with_dilation=[False, False, True]
+        aspp_dilate = [6, 12, 18]
+    elif output_stride_diff == 4:
+        replace_stride_with_dilation=[False, True, True]
+        aspp_dilate = [12, 24, 36]
+    else:
+        replace_stride_with_dilation=[True, True, True]
+        aspp_dilate = [24, 48, 72]
 
-    # In case of MaxPooling layer was avoided,
-    # we should do one more striding on the blocks than usual
-    kwargs['output_stride_lowlevel'] = 4
-    if not kwargs.get('fl_maxpool'):
-        kwargs['output_stride_lowlevel'] = 2
-        for i, e in enumerate(replace_stride_with_dilation):
-            if e is True:
-                replace_stride_with_dilation[i] = False
-                break
+    kwargs['output_stride_lowlevel'] = output_stride_lowlevel
 
     backbone = resnet.__dict__[backbone_name](
         pretrained=pretrained_backbone,

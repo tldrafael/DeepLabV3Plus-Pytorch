@@ -48,7 +48,7 @@ class DeepLabHeadV3Plus(nn.Module):
             nn.ReLU(inplace=True),
         ]
 
-        if fl_transpose:
+        if fl_transpose and output_stride_lowlevel > 1:
             if output_stride_lowlevel == 4:
                 convT_block = [convT_doubleinputsize(256, 128),
                                nn.BatchNorm2d(128),
