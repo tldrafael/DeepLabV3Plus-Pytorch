@@ -10,7 +10,7 @@ __all__ = ["DeepLabV3"]
 
 
 def convT_doubleinputsize(in_planes, out_planes, groups=1):
-    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1)
+    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1, groups=groups)
 
 
 class DeepLabV3(_SimpleSegmentationModel):
@@ -93,7 +93,6 @@ class DeepLabHeadV3Plus(nn.Module):
     def forward(self, feature):
         low_level_feature = self.project(feature['low_level'])
         output_feature = self.aspp(feature['out'])
-        # output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
         output_feature = self.upsample_out(output_feature)
         return self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
     
