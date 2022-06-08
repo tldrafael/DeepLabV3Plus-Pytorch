@@ -139,8 +139,8 @@ class StemBlock1(nn.Module):
         self.conv2 = conv5x5(inplanes, planes[1], stride=stride)
         self.bn2 = nn.BatchNorm2d(planes[1])
 
-        self.conv3 = conv7x7(inplanes, planes[2], stride=stride)
-        self.bn3 = nn.BatchNorm2d(planes[2])
+        #self.conv3 = conv7x7(inplanes, planes[2], stride=stride)
+        #self.bn3 = nn.BatchNorm2d(planes[2])
 
         self.relu = nn.ReLU(inplace=True)
 
@@ -151,10 +151,11 @@ class StemBlock1(nn.Module):
         out_2 = self.conv2(x)
         out_2 = self.bn2(out_2)
 
-        out_3 = self.conv3(x)
-        out_3 = self.bn3(out_3)
+        #out_3 = self.conv3(x)
+        #out_3 = self.bn3(out_3)
 
-        out = torch.cat([out_1, out_2, out_3], dim=1)
+        # out = torch.cat([out_1, out_2, out_3], dim=1)
+        out = torch.cat([out_1, out_2], dim=1)
         return self.relu(out)
 
 
@@ -172,9 +173,9 @@ class StemBlock2(nn.Module):
         self.conv3_2 = conv5x5(channel_reduction, planes[2], stride=stride)
         self.bn3 = nn.BatchNorm2d(planes[2])
 
-        self.conv4_1 = conv1x1(inplanes, channel_reduction)
-        self.conv4_2 = conv7x7(channel_reduction, planes[3], stride=stride)
-        self.bn4 = nn.BatchNorm2d(planes[3])
+        #self.conv4_1 = conv1x1(inplanes, channel_reduction)
+        #self.conv4_2 = conv7x7(channel_reduction, planes[3], stride=stride)
+        #self.bn4 = nn.BatchNorm2d(planes[3])
 
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=stride, padding=1)
         self.conv5 = conv1x1(inplanes, planes[4])
@@ -204,15 +205,16 @@ class StemBlock2(nn.Module):
         out_3 = self.conv3_2(out_3)
         out_3 = self.bn3(out_3)
 
-        out_4 = self.conv4_1(x)
-        out_4 = self.conv4_2(out_4)
-        out_4 = self.bn4(out_4)
+        #out_4 = self.conv4_1(x)
+        #out_4 = self.conv4_2(out_4)
+        #out_4 = self.bn4(out_4)
 
         out_5 = self.maxpool(x)
         out_5 = self.conv5(out_5)
         out_5 = self.bn5(out_5)
 
-        out = torch.cat([out_1, out_2, out_3, out_4, out_5], dim=1)
+        # out = torch.cat([out_1, out_2, out_3, out_4, out_5], dim=1)
+        out = torch.cat([out_1, out_2, out_3, out_5], dim=1)
         out += self.downsample(identity)
         out = self.relu(out)
 
@@ -224,8 +226,8 @@ class StemBlock2(nn.Module):
 class RichStem(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
-        self.block1 = StemBlock1(3, [24, 24, 24])
-        self.block2 = StemBlock2(72, [32, 64, 64, 64, 32], channel_reduction=16)
+        self.block1 = StemBlock1(3, [24, 24, 24], stride=1)
+        self.block2 = StemBlock2(72, [32, 64, 64, 64, 32], channel_reduction=16, stride=2)
 
     def forward(self, x):
         out = self.block1(x)

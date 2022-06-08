@@ -30,9 +30,10 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
 
     fl_maxpool = kwargs.get('fl_maxpool')
     fl_stemstride = kwargs.get('fl_stemstride')
-    output_stride_lowlevel = 4 / (2 * ((not fl_maxpool) + (not fl_stemstride)))
+    output_stride_lowlevel = 4 // max(2 * ((not fl_maxpool) + (not fl_stemstride)), 1)
     assert output_stride >= output_stride_lowlevel, 'Final output stride should be at least equal to the OS_lowlevel'
-    output_stride_diff = output_stride / output_stride_lowlevel
+    output_stride_diff = output_stride // output_stride_lowlevel
+    assert output_stride % output_stride_lowlevel == 0, 'The ratio between output_stride low-level and high-level should be an int'
 
     if not fl_stemstride and not fl_maxpool and output_stride > 8:
         raise ValueError('When avoiding StemStride and MaxPooling, the maximum possible stride is 8')
@@ -40,19 +41,22 @@ def _segm_resnet(name, backbone_name, num_classes, output_stride, pretrained_bac
         raise ValueError('When avoiding MaxPooling, the maximum possible stride is 16')
 
     if output_stride_diff == 1:
-        replace_stride_with_dilation=[False, False, False]
+        replace_stride_with_dilation=[True, True, True]
         aspp_dilate = [3, 6, 9]
     elif output_stride_diff == 2:
-        replace_stride_with_dilation=[False, False, True]
+        replace_stride_with_dilation=[False, True, True]
         aspp_dilate = [6, 12, 18]
     elif output_stride_diff == 4:
-        replace_stride_with_dilation=[False, True, True]
+        replace_stride_with_dilation=[False, False, True]
         aspp_dilate = [12, 24, 36]
-    else:
-        replace_stride_with_dilation=[True, True, True]
+    elif output_stride_diff == 8:
+        replace_stride_with_dilation=[False, False, False]
         aspp_dilate = [24, 48, 72]
+    else:
+        raise ValueError('output_stride_diff must be at most equal 8')
 
     kwargs['output_stride_lowlevel'] = output_stride_lowlevel
+    kwargs['output_stride_diff'] = output_stride_diff
 
     backbone = resnet.__dict__[backbone_name](
         pretrained=pretrained_backbone,

@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+import numpy as np
 
 from .utils import _SimpleSegmentationModel
 
@@ -8,7 +9,7 @@ from .utils import _SimpleSegmentationModel
 __all__ = ["DeepLabV3"]
 
 
-def convT_doubleinputsize(in_planes, out_planes):
+def convT_doubleinputsize(in_planes, out_planes, groups=1):
     return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1)
 
 
@@ -30,9 +31,21 @@ class DeepLabV3(_SimpleSegmentationModel):
     pass
 
 
+class Interpolate(nn.Module):
+    def __init__(self, output_stride_diff):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+        self.mode = 'bilinear'
+        self.scale_factor = output_stride_diff
+
+    def forward(self, x):
+        x = self.interp(x, scale_factor=self.scale_factor, mode=self.mode, align_corners=False)
+        return x
+
+
 class DeepLabHeadV3Plus(nn.Module):
     def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36],
-                 fl_transpose=False, output_stride_lowlevel=4, **kwargs):
+                 fl_transpose=False, output_stride_lowlevel=4, output_stride_diff=4, **kwargs):
         super(DeepLabHeadV3Plus, self).__init__()
         self.project = nn.Sequential(
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
@@ -42,41 +55,47 @@ class DeepLabHeadV3Plus(nn.Module):
 
         self.aspp = ASPP(in_channels, aspp_dilate)
 
+        # First upsampling operation to turn high_level feats as the same low_level feats resolution
+        if fl_transpose and output_stride_diff > 1:
+            convT_block = []
+            n_ups = int(np.log2(output_stride_diff))
+            for _ in range(n_ups):
+                convT_block.extend([convT_doubleinputsize(256, 256, groups=256),
+                                    nn.BatchNorm2d(256),
+                                    nn.ReLU(inplace=True),
+                                    ])
+            self.upsample_out = nn.Sequential(*convT_block)
+        else:
+            self.upsample_out = Interpolate(output_stride_diff)
+
+
         self.classifier = [
             nn.Conv2d(304, 256, 3, padding=1, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         ]
-
+        # Second upsampling operation conv to turn low_level feats as the same input resolution
         if fl_transpose and output_stride_lowlevel > 1:
-            if output_stride_lowlevel == 4:
-                convT_block = [convT_doubleinputsize(256, 128),
-                               nn.BatchNorm2d(128),
-                               nn.ReLU(inplace=True),
-                               convT_doubleinputsize(128, 64)
-                               ]
-
-            if output_stride_lowlevel == 2:
-                convT_block = [convT_doubleinputsize(256, 64)]
-
-            convT_block.extend([nn.BatchNorm2d(64),
-                                nn.ReLU(inplace=True),
-                                nn.Conv2d(64, num_classes, 1)
-                                ])
-
+            convT_block = []
+            n_ups = int(np.log2(output_stride_lowlevel))
+            for _ in range(n_ups):
+                convT_block.extend([convT_doubleinputsize(256, 256, groups=256),
+                                    nn.BatchNorm2d(256),
+                                    nn.ReLU(inplace=True),
+                                    ])
             self.classifier.extend(convT_block)
         else:
             self.classifier.append(nn.Conv2d(256, num_classes, 1))
-
         self.classifier = nn.Sequential(*self.classifier)
 
         self._init_weight()
 
     def forward(self, feature):
-        low_level_feature = self.project( feature['low_level'] )
+        low_level_feature = self.project(feature['low_level'])
         output_feature = self.aspp(feature['out'])
-        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
-        return self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
+        # output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
+        output_feature = self.upsample_out(output_feature)
+        return self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
     
     def _init_weight(self):
         for m in self.modules():
