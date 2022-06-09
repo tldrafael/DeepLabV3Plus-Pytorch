@@ -130,6 +130,28 @@ class Bottleneck(nn.Module):
         return out
 
 
+class StemBlock3(nn.Module):
+    def __init__(self, inplanes=3, planes=[64, 64], strides=[1, 2]):
+        super().__init__()
+        self.conv1 = conv3x3(inplanes, planes[0], stride=strides[0])
+        self.bn1 = nn.BatchNorm2d(planes[0])
+
+        self.conv2 = conv3x3(inplanes, planes[1], stride=strides[1])
+        self.bn2 = nn.BatchNorm2d(planes[1])
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(x)
+        out = self.bn2(out)
+        out = self.relu(out)
+        return out
+
+
 class StemBlock1(nn.Module):
     def __init__(self, inplanes, planes, stride=1):
         super().__init__()
@@ -237,7 +259,8 @@ class ParallelStem(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
         self.classic = ClassicStem()
-        self.rich = RichStem()
+        #self.rich = RichStem()
+        self.rich = StemBlock3()
 
     def forward(self, x):
         return self.classic(x) + self.rich(x)
