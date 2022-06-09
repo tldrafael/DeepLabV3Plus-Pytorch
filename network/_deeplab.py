@@ -74,6 +74,7 @@ class DeepLabHeadV3Plus(nn.Module):
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         ]
+
         # Second upsampling operation conv to turn low_level feats as the same input resolution
         if fl_transpose and output_stride_lowlevel > 1:
             convT_block = []
@@ -84,8 +85,8 @@ class DeepLabHeadV3Plus(nn.Module):
                                     nn.ReLU(inplace=True),
                                     ])
             self.classifier.extend(convT_block)
-        else:
-            self.classifier.append(nn.Conv2d(256, num_classes, 1))
+
+        self.classifier.append(nn.Conv2d(256, num_classes, 1))
         self.classifier = nn.Sequential(*self.classifier)
 
         self._init_weight()
