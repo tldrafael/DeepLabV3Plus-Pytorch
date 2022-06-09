@@ -247,7 +247,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None, fl_maxpool=True, fl_richstem=False, fl_parallelstem=False,
-                 fl_stemstride=True, **kwargs):
+                 fl_stemstride=True, fl_lfe=False, **kwargs):
 
         assert not fl_richstem or not fl_parallelstem, \
                "Or set fl_richstem or fl_richstem_parallel, but not both"
@@ -281,11 +281,11 @@ class ResNet(nn.Module):
             self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, block_id=2, fl_lfe=fl_lfe,
                                        dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, block_id=3, fl_lfe=fl_lfe,
                                        dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, block_id=4, fl_lfe=fl_lfe,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
@@ -307,26 +307,49 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, block_id=None, fl_lfe=False):
+        if fl_lfe and block_id is not None:
+            assert block_id in [2, 3, 4], 'LFE is used only in the blocks 2, 3, 4'
+            if block_id == 2:
+                lfe_factors = [1, 2, 2, 1]
+            elif block_id == 3:
+                lfe_factors = [1, 2, 3, 3, 2, 1]
+            elif block_id == 4:
+                lfe_factors = [1, 2, 1]
+
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
         if dilate:
             self.dilation *= stride
             stride = 1
+
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 conv1x1(self.inplanes, planes * block.expansion, stride),
                 norm_layer(planes * block.expansion),
             )
 
+        list_dilations = []
+        if fl_lfe and block_id is not None:
+            for f in lfe_factors:
+                if f == 1:
+                    list_dilations.append(1)
+                elif f == 2:
+                    list_dilations.append(self.dilation)
+                elif f == 3:
+                    list_dilations.append(2 * self.dilation - 1)
+        else:
+            list_dilations = [previous_dilation]
+            list_dilations.extend([self.dilation for _ in range(1, blocks)])
+
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
+                            self.base_width, list_dilations[0], norm_layer))
         self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
+        for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
+                                base_width=self.base_width, dilation=list_dilations[i],
                                 norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
