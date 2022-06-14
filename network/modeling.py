@@ -4,7 +4,7 @@ from .backbone import resnet
 from .backbone import mobilenetv2
 from .backbone import hrnetv2
 
-def _segm_hrnet(name, backbone_name, num_classes, pretrained_backbone):
+def _segm_hrnet(name, backbone_name, num_classes, pretrained_backbone, **kwargs):
 
     backbone = hrnetv2.__dict__[backbone_name](pretrained_backbone)
     # HRNetV2 config:
@@ -160,8 +160,8 @@ def deeplabv3_mobilenet(num_classes=21, output_stride=8, pretrained_backbone=Tru
 
 
 # Deeplab v3+
-def deeplabv3plus_hrnetv2_48(num_classes=21, output_stride=4, pretrained_backbone=False): # no pretrained backbone yet
-    return _load_model('deeplabv3plus', 'hrnetv2_48', num_classes, output_stride, pretrained_backbone=pretrained_backbone)
+def deeplabv3plus_hrnetv2_48(num_classes=21, output_stride=4, pretrained_backbone=False, **kwargs): # no pretrained backbone yet
+    return _load_model('deeplabv3plus', 'hrnetv2_48', num_classes, output_stride, pretrained_backbone=pretrained_backbone, **kwargs)
 
 
 def deeplabv3plus_hrnetv2_32(num_classes=21, output_stride=4, pretrained_backbone=True):

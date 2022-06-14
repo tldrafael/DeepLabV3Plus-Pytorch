@@ -47,6 +47,7 @@ class DeepLabHeadV3Plus(nn.Module):
     def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36],
                  fl_transpose=False, output_stride_lowlevel=4, output_stride_diff=4, **kwargs):
         super(DeepLabHeadV3Plus, self).__init__()
+
         self.project = nn.Sequential(
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
@@ -54,6 +55,7 @@ class DeepLabHeadV3Plus(nn.Module):
         )
 
         self.aspp = ASPP(in_channels, aspp_dilate)
+        self.fl_transpose = fl_transpose
 
         # First upsampling operation to turn high_level feats as the same low_level feats resolution
         if fl_transpose and output_stride_diff > 1:
@@ -94,7 +96,10 @@ class DeepLabHeadV3Plus(nn.Module):
     def forward(self, feature):
         low_level_feature = self.project(feature['low_level'])
         output_feature = self.aspp(feature['out'])
-        output_feature = self.upsample_out(output_feature)
+        if self.fl_transpose:
+            output_feature = self.upsample_out(output_feature)
+        else:
+            output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
         return self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
     
     def _init_weight(self):
