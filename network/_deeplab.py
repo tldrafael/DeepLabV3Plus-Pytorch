@@ -9,8 +9,8 @@ from .utils import _SimpleSegmentationModel
 __all__ = ["DeepLabV3"]
 
 
-def convT_doubleinputsize(in_planes, out_planes, groups=1):
-    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1, groups=groups)
+def convT_doubleinputsize(in_planes, out_planes, ks=4, groups=1):
+    return nn.ConvTranspose2d(in_planes, out_planes, kernel_size=ks, stride=2, padding=1, groups=groups)
 
 
 class DeepLabV3(_SimpleSegmentationModel):
@@ -45,7 +45,7 @@ class Interpolate(nn.Module):
 
 class DeepLabHeadV3Plus(nn.Module):
     def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36],
-                 fl_transpose=False, output_stride_lowlevel=4, output_stride_diff=4, **kwargs):
+                 fl_transpose=False, fl_transpose_odd=False, output_stride_lowlevel=4, output_stride_diff=4, **kwargs):
         super(DeepLabHeadV3Plus, self).__init__()
 
         self.project = nn.Sequential(
@@ -61,8 +61,12 @@ class DeepLabHeadV3Plus(nn.Module):
         if fl_transpose and output_stride_diff > 1:
             convT_block = []
             n_ups = int(np.log2(output_stride_diff))
-            for _ in range(n_ups):
-                convT_block.extend([convT_doubleinputsize(256, 256, groups=256),
+            for i_up in range(n_ups):
+                if i_up == (n_ups - 1) and fl_transpose_odd:
+                    ks = 3
+                else:
+                    ks = 4
+                convT_block.extend([convT_doubleinputsize(256, 256, groups=256, ks=ks),
                                     nn.BatchNorm2d(256),
                                     nn.ReLU(inplace=True),
                                     ])
