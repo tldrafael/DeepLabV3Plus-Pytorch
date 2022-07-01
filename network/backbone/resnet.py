@@ -270,7 +270,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None, fl_maxpool=True, fl_richstem=False, fl_parallelstem=False,
-                 fl_stemstride=True, fl_lfe=False, **kwargs):
+                 fl_stemstride=True, fl_lfe=False, output_stride_diff=8, **kwargs):
 
         assert not fl_richstem or not fl_parallelstem, \
                "Or set fl_richstem or fl_richstem_parallel, but not both"
@@ -281,6 +281,8 @@ class ResNet(nn.Module):
         self._norm_layer = norm_layer
 
         self.inplanes = 64
+        self.fl_lfe = fl_lfe
+        self.output_stride_diff = output_stride_diff
         self.dilation = 1
         self.fl_maxpool = fl_maxpool
         self.fl_richstem = fl_richstem
@@ -304,12 +306,9 @@ class ResNet(nn.Module):
             self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, block_id=2, fl_lfe=fl_lfe,
-                                       dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, block_id=3, fl_lfe=fl_lfe,
-                                       dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, block_id=4, fl_lfe=fl_lfe,
-                                       dilate=replace_stride_with_dilation[2])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, block_id=2, dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, block_id=3, dilate=replace_stride_with_dilation[1])
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, block_id=4, dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -330,9 +329,9 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, block_id=None, fl_lfe=False):
-        if fl_lfe and block_id is not None:
-            assert block_id in [2, 3, 4], 'LFE is used only in the blocks 2, 3, 4'
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, block_id=None):
+        if self.fl_lfe and block_id is not None:
+            assert block_id in [2, 3, 4], 'LFE is only used in the blocks 2, 3, 4.'
             if block_id == 2:
                 lfe_factors = [1, 2, 2, 1]
             elif block_id == 3:
@@ -343,8 +342,17 @@ class ResNet(nn.Module):
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
+
         if dilate:
-            self.dilation *= stride
+            if self.fl_lfe and block_id > 2:
+                if block_id == 3:
+                    self.dilation = self.output_stride_diff / self.dilation
+                elif self.dilation > 1:
+                    self.dilation /= stride
+                else:
+                    pass
+            else:
+                self.dilation *= stride
             stride = 1
 
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -354,7 +362,7 @@ class ResNet(nn.Module):
             )
 
         list_dilations = []
-        if fl_lfe and block_id is not None:
+        if self.fl_lfe and block_id is not None:
             for f in lfe_factors:
                 if f == 1:
                     list_dilations.append(1)
@@ -365,6 +373,8 @@ class ResNet(nn.Module):
         else:
             list_dilations = [previous_dilation]
             list_dilations.extend([self.dilation for _ in range(1, blocks)])
+
+        list_dilations = [int(d) for d in list_dilations]
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
